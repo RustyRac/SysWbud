@@ -1,0 +1,114 @@
+#include <xc.h>
+#include "buttons.h"
+#include "lcd.h"
+#include "adc.h"
+#include "string.h"
+#include <stdio.h>
+
+void system_init1(void){
+    AD1PCFG = 0xFFFF;
+    TRISA = 0x0000;
+    TRISD = 0xFFFF;
+    LATA = 0x0000;
+    
+    ADC_SetConfiguration(ADC_CONFIGURATION_DEFAULT);
+    ADC_ChannelEnable(ADC_CHANNEL_POTENTIOMETER);
+    
+    LCD_Initialize();
+    BUTTON_Enable(BUTTON_S3);
+    BUTTON_Enable(BUTTON_S5);
+}
+
+void update_display1(int t1, int t2, int state) {
+    char buffer[16];
+    LCD_ClearScreen();
+    
+    if (state == 3) {
+        LCD_PutString("Gracz 1 przegral", 16);
+        return;
+    } else if (state == 4) {
+        LCD_PutString("Gracz 2 przegral", 16);
+        return;
+    }
+    
+    sprintf(buffer, "G1: %02d:%02d", t1 / 60, t1 % 60);
+    LCD_PutString(buffer, strlen(buffer));
+    LCD_PutChar('\n');
+    sprintf(buffer, "G2: %02d:%02d", t2 / 60, t2 % 60);
+    LCD_PutString(buffer, strlen(buffer));
+}
+
+int main(void) {
+    system_init1();
+    
+    int state = 0; 
+    int time_p1 = 60;
+    int time_p2 = 60;
+    int last_time_set = 0;
+    unsigned long adc_value;
+    int timer_tick = 0;
+    
+    while(1) {
+        if (state == 0) {
+            adc_value = ADC_Read10bit(ADC_CHANNEL_POTENTIOMETER);
+            if (adc_value != 0xFFFF) {
+                int current_set = 60;
+                if (adc_value < 341) {
+                    current_set = 60;
+                } else if (adc_value < 682) {
+                    current_set = 180;
+                } else {
+                    current_set = 300;
+                }
+                
+                if (current_set != last_time_set) {
+                    time_p1 = current_set;
+                    time_p2 = current_set;
+                    last_time_set = current_set;
+                    update_display1(time_p1, time_p2, state);
+                }
+            }
+            
+            if (BUTTON_IsPressed(BUTTON_S3)) {
+                state = 2; 
+                __delay32(400000);
+                while(BUTTON_IsPressed(BUTTON_S3));
+            } else if (BUTTON_IsPressed(BUTTON_S5)) {
+                state = 1; 
+                __delay32(400000);
+                while(BUTTON_IsPressed(BUTTON_S5));
+            }
+        } else if (state == 1 || state == 2) {
+            if (state == 1 && BUTTON_IsPressed(BUTTON_S3)) {
+                state = 2;
+                __delay32(400000);
+                while(BUTTON_IsPressed(BUTTON_S3));
+            } else if (state == 2 && BUTTON_IsPressed(BUTTON_S5)) {
+                state = 1;
+                __delay32(400000);
+                while(BUTTON_IsPressed(BUTTON_S5));
+            }
+            
+            __delay32(100000);
+            timer_tick++;
+            
+            if (timer_tick >= 10) {
+                timer_tick = 0;
+                if (state == 1) {
+                    time_p1--;
+                    if (time_p1 <= 0) {
+                        state = 3; 
+                    }
+                } else if (state == 2) {
+                    time_p2--;
+                    if (time_p2 <= 0) {
+                        state = 4; 
+                    }
+                }
+                update_display1(time_p1, time_p2, state);
+            }
+        }
+    }
+    
+    return 0;
+}
